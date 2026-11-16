@@ -4,10 +4,10 @@ spring:
       max-file-size: 2MB
       max-request-size: 2MB
   jackson:
+    # Jackson 3 中 WRITE_DATES_AS_TIMESTAMPS 已迁到 DateTimeFeature，
+    # 不能再写在 serialization 下，改由 JacksonConfiguration 以代码关闭。
     date-format: yyyy-MM-dd HH:mm:ss
     time-zone: GMT+8
-    serialization:
-      write-dates-as-timestamps: false
   application:
     name: common-template
   datasource:
@@ -28,16 +28,22 @@ mybatis-plus:
       logic-delete-field: isDelete
       logic-delete-value: 1
       logic-not-delete-value: 0
+
+# 接口文档：Spring Boot 4 使用 springdoc-openapi 3.x + knife4j 5.x
+# 访问 http://localhost:8123/api/doc.html
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+  group-configs:
+    - group: default
+      packages-to-scan: anzihe.com.common_template.controller
+
 knife4j:
   enable: true
-  openapi:
-    title: common-template
-    version: 1.0
-    group:
-      default:
-        api-rule: package
-        api-rule-resources:
-          - anzihe.com.common_template.controller
+  setting:
+    language: zh_cn
 
 # 本地头像上传目录（相对运行目录）
 app:

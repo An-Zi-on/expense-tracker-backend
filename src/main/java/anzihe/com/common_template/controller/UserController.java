@@ -14,12 +14,15 @@ import anzihe.com.common_template.model.DTO.user.UserRegisterRequest;
 import anzihe.com.common_template.model.DTO.user.UserRoleAssignDTO;
 import anzihe.com.common_template.model.DTO.user.UserUpdateRequest;
 import anzihe.com.common_template.model.VO.user.UserVO;
+import anzihe.com.common_template.model.entity.SysRole;
 import anzihe.com.common_template.model.entity.User;
+import anzihe.com.common_template.service.SysRoleService;
 import anzihe.com.common_template.service.UserService;
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.StrUtil;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.springframework.beans.factory.annotation.Value;
@@ -31,8 +34,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
-import javax.annotation.Resource;
-import javax.servlet.http.HttpServletRequest;
+import jakarta.annotation.Resource;
+import jakarta.servlet.http.HttpServletRequest;
 import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
@@ -46,6 +49,9 @@ public class UserController {
 
     @Resource
     private UserService userService;
+
+    @Resource
+    private SysRoleService sysRoleService;
 
     @Value("${app.upload.dir:uploads}")
     private String uploadDir;
@@ -108,21 +114,34 @@ public class UserController {
     }
 
     /**
-     * 给用户分配角色（只改 role_id，不碰其他字段）
+     * 给用户分配角色（只改 role_id / user_role，不碰其他字段）
      *
      * 这里用 LambdaUpdateWrapper 显式 set：updateById 会忽略 null 字段，
      * 那样 roleId 传 null 时就没法解绑角色了。
+     *
+     * user.user_role 必须跟着角色一起改：@AuthCheck 鉴权读的是 user_role 这个字符串，
+     * 只写 role_id 的话，把某人提成管理员后他依然过不了管理员校验。
      */
     @PostMapping("/role/assign")
+    @AuthCheck(mustRole = UserConstant.USER_ADMIN)
     public BaseResponse<Boolean> assignRole(@RequestBody UserRoleAssignDTO userRoleAssignDTO) {
         ThrowUtils.throwException(userRoleAssignDTO == null || userRoleAssignDTO.getUserId() == null,
                 ErrorCode.PARAMS_ERROR, "用户ID不能为空");
         User existUser = userService.getById(userRoleAssignDTO.getUserId());
         ThrowUtils.throwException(existUser == null, ErrorCode.NOT_FOUND_ERROR, "用户不存在");
 
+        String roleKey = UserConstant.USER;
+        if (userRoleAssignDTO.getRoleId() != null) {
+            SysRole role = sysRoleService.getById(userRoleAssignDTO.getRoleId());
+            ThrowUtils.throwException(role == null || (role.getDeleted() != null && role.getDeleted() == 1),
+                    ErrorCode.NOT_FOUND_ERROR, "角色不存在");
+            roleKey = StrUtil.blankToDefault(role.getRoleKey(), UserConstant.USER);
+        }
+
         boolean result = userService.update(new LambdaUpdateWrapper<User>()
                 .eq(User::getId, userRoleAssignDTO.getUserId())
-                .set(User::getRoleId, userRoleAssignDTO.getRoleId()));
+                .set(User::getRoleId, userRoleAssignDTO.getRoleId())
+                .set(User::getUserRole, roleKey));
         ThrowUtils.throwException(!result, ErrorCode.OPERATION_ERROR);
         return ResultUtils.success(true);
     }
@@ -161,6 +180,15 @@ public class UserController {
         BeanUtil.copyProperties(userAddRequest, user);
         user.setUserPassword(userService.getEncryptPassword(UserConstant.DEFAULT_PASSWORD));
         user.setUserRole(UserConstant.USER);
+        // 新建的用户默认落到「普通用户」角色，否则 role_id 为空 → 登录后没有任何菜单
+        SysRole defaultRole = sysRoleService.getOne(new LambdaQueryWrapper<SysRole>()
+                .eq(SysRole::getRoleKey, UserConstant.USER)
+                .eq(SysRole::getDeleted, 0)
+                .orderByAsc(SysRole::getId)
+                .last("LIMIT 1"));
+        if (defaultRole != null) {
+            user.setRoleId(defaultRole.getId().intValue());
+        }
         boolean save = userService.save(user);
         ThrowUtils.throwException(!save, ErrorCode.OPERATION_ERROR);
         return ResultUtils.success(save);

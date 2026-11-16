@@ -47,7 +47,9 @@ public class SysRoleServiceImpl extends ServiceImpl<SysRoleMapper, SysRole>
         Page<SysRoleDTO> pageResult = new Page<>();
         pageResult.setCurrent(current);
         pageResult.setSize(size);
-        page.setTotal(total);
+        // 这里原来写的是 page.setTotal(...)，total 落在了查询用的分页对象上，
+        // 返回给前端的 pageResult.total 永远是 0，分页器就显示「共 0 条」
+        pageResult.setTotal(total);
         List<SysRoleDTO> roleDTOList = new ArrayList<>();
         rolePage.getRecords().forEach(item->
                         roleDTOList.add(BeanUtil.toBean(item,SysRoleDTO.class)));

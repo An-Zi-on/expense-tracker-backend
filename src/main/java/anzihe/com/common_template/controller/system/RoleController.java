@@ -1,8 +1,10 @@
 package anzihe.com.common_template.controller.system;
 
+import anzihe.com.common_template.annotation.AuthCheck;
 import anzihe.com.common_template.common.BaseResponse;
 import anzihe.com.common_template.common.DeleteRequest;
 import anzihe.com.common_template.common.ResultUtils;
+import anzihe.com.common_template.common.UserConstant;
 import anzihe.com.common_template.model.DTO.role.SysRoleDTO;
 import anzihe.com.common_template.model.DTO.role.SysRoleMenuAssignDTO;
 import anzihe.com.common_template.model.VO.role.SysRoleVO;
@@ -13,9 +15,15 @@ import cn.hutool.core.bean.BeanUtil;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.springframework.web.bind.annotation.*;
 
-import javax.annotation.Resource;
+import jakarta.annotation.Resource;
 import java.util.List;
 
+/**
+ * 角色管理接口 —— 全部仅管理员可用
+ *
+ * 这几个接口能改「谁能看到什么」，普通用户拿自己 token 就能调的话，
+ * 等于任何人都能给自己提权，所以统一加 @AuthCheck(admin)。
+ */
 @RestController
 @RequestMapping("/role")
 public class RoleController {
@@ -26,27 +34,32 @@ public class RoleController {
     private SysRoleMenuService sysRoleMenuService;
 
     @PostMapping("/save")
+    @AuthCheck(mustRole = UserConstant.USER_ADMIN)
     public BaseResponse save( @RequestBody SysRoleDTO roleDTO){
 
         return ResultUtils.success(sysRoleService.save(BeanUtil.toBean(roleDTO, SysRole.class)));
     }
 
     @PostMapping("/delete")
+    @AuthCheck(mustRole = UserConstant.USER_ADMIN)
     public BaseResponse save( @RequestBody DeleteRequest deleteRequest){
         return ResultUtils.success(sysRoleService.removeById(deleteRequest.getId()));
     }
 
     @PostMapping("/update")
+    @AuthCheck(mustRole = UserConstant.USER_ADMIN)
     public BaseResponse update( @RequestBody SysRoleDTO roleDTO){
         return ResultUtils.success(sysRoleService.updateById(BeanUtil.toBean(roleDTO, SysRole.class)));
     }
 
     @GetMapping("/get/{id}")
+    @AuthCheck(mustRole = UserConstant.USER_ADMIN)
     public BaseResponse<SysRoleVO> detail( @PathVariable Long id ){
         return ResultUtils.success(BeanUtil.toBean(sysRoleService.getById(id), SysRoleVO.class));
     }
 
     @PostMapping("/page")
+    @AuthCheck(mustRole = UserConstant.USER_ADMIN)
     public BaseResponse<Page<SysRoleDTO>> getList(SysRoleDTO roleDTO) {
         return ResultUtils.success(sysRoleService.getlist(roleDTO));
     }
@@ -55,6 +68,7 @@ public class RoleController {
      * 查询某角色已授权的菜单 id 列表（分配权限弹窗回显用）
      */
     @GetMapping("/menu/list")
+    @AuthCheck(mustRole = UserConstant.USER_ADMIN)
     public BaseResponse<List<Long>> roleMenuIds(@RequestParam Long roleId) {
         return ResultUtils.success(sysRoleMenuService.listMenuIdsByRoleId(roleId));
     }
@@ -63,6 +77,7 @@ public class RoleController {
      * 覆盖式给角色分配菜单权限（menuIds 传空集合表示清空该角色权限）
      */
     @PostMapping("/menu/assign")
+    @AuthCheck(mustRole = UserConstant.USER_ADMIN)
     public BaseResponse<Boolean> assignRoleMenus(@RequestBody SysRoleMenuAssignDTO assignDTO) {
         return ResultUtils.success(
                 sysRoleMenuService.assignMenus(assignDTO.getRoleId(), assignDTO.getMenuIds()));

@@ -14,7 +14,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-import javax.annotation.PostConstruct;
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.Resource;
 import java.util.Date;
 
 @Slf4j
@@ -31,6 +32,10 @@ public class TokenUtil {
     @Value("${jwt.issuer:template}")
     private String issuer;
 
+    /** 登出黑名单：verify 是静态方法，这里靠 @PostConstruct 注入静态引用 */
+    @Resource
+    private TokenBlacklist tokenBlacklist;
+
     // ========== 静态常量 ==========
     public static final String USER_INFO = "currentUser";
 
@@ -38,12 +43,14 @@ public class TokenUtil {
     private static String staticTokenSecret;
     private static Integer staticExpireMinutes;
     private static String staticIssuer;
+    private static TokenBlacklist staticBlacklist;
 
     @PostConstruct
     public void init() {
         staticTokenSecret = this.tokenSecret;
         staticExpireMinutes = this.expireMinutes;
         staticIssuer = this.issuer;
+        staticBlacklist = this.tokenBlacklist;
     }
 
     /**
@@ -76,10 +83,15 @@ public class TokenUtil {
     /**
      * 验证 Token 是否有效
      * @param token JWT Token
-     * @return true=有效, false=无效
+     * @return true=有效, false=无效（含已登出）
      */
     public static boolean verify(String token) {
         if (StrUtil.isBlank(token)) {
+            return false;
+        }
+        // 先看黑名单：登出后签名仍然合法，只能靠这一步拦下来
+        if (staticBlacklist != null && staticBlacklist.isRevoked(token)) {
+            log.info("Token 已登出，拒绝使用");
             return false;
         }
         try {
@@ -106,7 +118,12 @@ public class TokenUtil {
      */
     public static UserVO getCurrentUser(String token) {
         if (StrUtil.isBlank(token)) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR, "Token不能为空");
+            // 这里原本抛 PARAMS_ERROR(40000)，但前端只在 40100 时跳登录页，
+            // 结果是「没登录也不跳转、停在原页面报个参数错误」。统一成未登录。
+            throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR, "未登录，请先登录");
+        }
+        if (staticBlacklist != null && staticBlacklist.isRevoked(token)) {
+            throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR, "登录已失效，请重新登录");
         }
 
         try {
